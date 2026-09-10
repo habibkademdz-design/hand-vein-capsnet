@@ -3,7 +3,7 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, Sequential, Model
-from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, Reshape, Dense, Lambda
+from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, Reshape, Dense, Lambda, Flatten
 from tensorflow.keras.regularizers import l2
 
 from .layers import PrimaryCapsules, DynamicRouting
@@ -55,6 +55,9 @@ class CapsuleNetwork(Model):
             strides=2
         )
         
+        # Flatten layer
+        self.flatten = Flatten()
+        
         # Class capsules (dense connection)
         self.class_capsules = Dense(
             num_subjects * dim_capsule,
@@ -89,10 +92,9 @@ class CapsuleNetwork(Model):
         
         # Flatten and pass through dense layer to get class capsules
         batch_size = tf.shape(u)[0]
-        num_primary = tf.shape(u)[1]
         
-        # Reshape for dense layer
-        u_flat = tf.reshape(u, [batch_size, -1])
+        # Flatten the primary capsules
+        u_flat = self.flatten(u)
         v_flat = self.class_capsules(u_flat)
         
         # Reshape back to capsules
@@ -158,8 +160,8 @@ def build_capsnet(num_subjects=276, l2_reg=1e-4):
         strides=2
     )(x)
     
-    # Flatten
-    flat = Reshape((-1,))(primary_caps)
+    # Flatten using Flatten layer instead of Reshape(-1)
+    flat = Flatten()(primary_caps)
     
     # Class capsules
     class_caps_flat = Dense(
@@ -173,7 +175,7 @@ def build_capsnet(num_subjects=276, l2_reg=1e-4):
     # Apply squashing
     class_caps = Lambda(lambda x: CapsuleNetwork.squash(x))(class_caps)
     
-    # Output: capsule lengths (for softmax/margin loss)
+    # Output: capsule lengths (for margin loss)
     capsule_lengths = Lambda(lambda x: tf.norm(x, axis=-1))(class_caps)
     
     model = Model(inputs=inputs, outputs=capsule_lengths)
